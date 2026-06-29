@@ -1,0 +1,29 @@
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: ats
+      POSTGRES_PASSWORD: ats_secret
+      POSTGRES_DB: ats_db
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  api:
+    build: .
+    command: ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    ports:
+      - "8001:8000"
+    depends_on:
+      - db
+    env_file:
+      - .env
+    volumes:
+      - ./app:/app/app
+      - ./uploads:/app/uploads
+      - ./seed.py:/app/seed.py
+      - ./alembic:/app/alembic
+
+volumes:
+  pgdata:
