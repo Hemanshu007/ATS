@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.core.config import settings
 from app.core.security import hash_password, verify_password, create_access_token, DUMMY_HASH
 from app.core.dependencies import get_current_user
 from app.models.user import User
@@ -15,7 +16,10 @@ from app.schemas.auth import RegisterRequest, LoginRequest, TokenResponse
 from app.schemas.user import MeResponse, UserOut, CandidateOut, RecruiterOut
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-limiter = Limiter(key_func=get_remote_address)
+limiter = Limiter(
+    key_func=get_remote_address,
+    storage_uri=settings.REDIS_URL,
+)
 
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
