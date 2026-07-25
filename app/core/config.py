@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: str = "redis://localhost:6379/0"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"
 
+    # Scheduled tasks
+    STALE_APPLICATION_DAYS: int = 14
+
     class Config:
         env_file = ".env"
 

@@ -9,7 +9,7 @@ Backend API for managing the hiring pipeline — job posting, applications, stat
 - **Alembic** for migrations
 - **JWT** auth (python-jose + passlib/bcrypt)
 - **Local filesystem** for resume storage
-- **Celery + Redis** for email notifications (durable, retriable)
+- **Celery + Redis** for email notifications (durable, retriable) and scheduled tasks (stale-application sweep)
 - **uv** for dependency management
 - **Docker Compose** for orchestration
 
@@ -57,6 +57,9 @@ uv run uvicorn app.main:app --reload
 
 # In a separate terminal, start the Celery worker for email sending:
 uv run celery -A app.core.celery_app worker --loglevel=info
+
+# In another terminal, start Celery Beat for scheduled tasks:
+uv run celery -A app.core.celery_app beat --loglevel=info
 ```
 
 ## API Endpoints
@@ -90,9 +93,13 @@ app/
 ├── core/
 │   ├── config.py        # Settings via pydantic-settings
 │   ├── security.py      # JWT + password hashing
-│   └── dependencies.py  # Auth guards (get_current_user/recruiter/candidate)
+│   ├── dependencies.py  # Auth guards (get_current_user/recruiter/candidate)
+│   ├── redis_client.py  # Async Redis client
+│   ├── celery_app.py    # Celery app + beat schedule
+│   └── cache.py         # Job listing cache helpers
 ├── models/              # SQLAlchemy models (10 tables)
 ├── schemas/             # Pydantic request/response schemas
 ├── routers/             # API route handlers
-└── services/            # Storage + email services
+├── services/            # Storage + email services
+└── tasks/               # Celery tasks (email, scheduled)
 ```

@@ -44,6 +44,17 @@ services:
     volumes:
       - ./app:/app/app
 
+  beat:
+    build: .
+    command: ["uv", "run", "celery", "-A", "app.core.celery_app", "beat", "--loglevel=info"]
+    depends_on:
+      - db
+      - redis
+    env_file:
+      - .env
+    volumes:
+      - ./app:/app/app
+
 volumes:
   pgdata:
   redisdata:

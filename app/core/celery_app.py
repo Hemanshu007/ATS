@@ -1,4 +1,5 @@
 from celery import Celery
+from celery.schedules import crontab
 
 from app.core.config import settings
 
@@ -6,7 +7,7 @@ celery_app = Celery(
     "ats",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
-    include=["app.tasks.email_tasks"],
+    include=["app.tasks.email_tasks", "app.tasks.scheduled_tasks"],
 )
 
 celery_app.conf.update(
@@ -16,3 +17,10 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
 )
+
+celery_app.conf.beat_schedule = {
+    "flag-stale-applications-daily": {
+        "task": "app.tasks.scheduled_tasks.flag_stale_applications",
+        "schedule": crontab(hour=2, minute=0),
+    },
+}
