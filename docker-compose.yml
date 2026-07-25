@@ -17,6 +17,7 @@ services:
       - "8001:8000"
     depends_on:
       - db
+      - redis
     env_file:
       - .env
     volumes:
@@ -25,5 +26,24 @@ services:
       - ./seed.py:/app/seed.py
       - ./alembic:/app/alembic
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:6380:6379"
+    volumes:
+      - redisdata:/data
+
+  worker:
+    build: .
+    command: ["uv", "run", "celery", "-A", "app.core.celery_app", "worker", "--loglevel=info"]
+    depends_on:
+      - db
+      - redis
+    env_file:
+      - .env
+    volumes:
+      - ./app:/app/app
+
 volumes:
   pgdata:
+  redisdata:
