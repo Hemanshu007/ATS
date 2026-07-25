@@ -1,6 +1,5 @@
 import uuid
-from datetime import datetime
-from math import ceil
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, func
@@ -15,6 +14,7 @@ from app.models.job import Job
 from app.models.recruiter import Recruiter
 from app.models.application import Application
 from app.schemas.job import JobCreate, JobOut, JobStatusUpdate
+from app.schemas.pagination import paginate
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -38,7 +38,6 @@ async def create_job(
     await invalidate_job_list_cache()
     await db.refresh(job, attribute_names=["company"])
 
-    # Dispatch job embedding generation (fire-and-forget, non-critical)
     try:
         from app.tasks.resume_processing_tasks import generate_job_embedding
         generate_job_embedding.delay(str(job.id))
@@ -47,8 +46,6 @@ async def create_job(
 
     return job
 
-
-# --- GET /jobs/ with pagination + filters (PAGE-01, FILTER-02) ---
 
 @router.get("/")
 async def list_jobs(
@@ -60,37 +57,30 @@ async def list_jobs(
 ):
     query = select(Job).where(Job.status == "open")
 
-    # SOFT-01: Exclude soft-deleted jobs
     if hasattr(Job, "is_deleted"):
         query = query.where(Job.is_deleted == False)
 
-    # FILTER-02: Filter by job_type
     if job_type:
         valid_types = ["onsite", "remote", "hybrid"]
         if job_type not in valid_types:
             raise HTTPException(
                 status_code=422,
-                detail=f"Invalid job_type '{job_type}'. Must be one of: {valid_types}"
+                detail=f"Invalid job_type '{job_type}'. Must be one of: {valid_types}",
             )
 
-    # Check cache (after input validation, before DB query)
     cached = await get_cached_job_list(page, page_size, job_type, location)
     if cached is not None:
         return cached
 
-    # FILTER-02: Filter by job_type
     if job_type:
         query = query.where(Job.job_type == job_type)
 
-    # FILTER-02: Filter by location (case-insensitive partial match)
     if location:
         query = query.where(Job.location.ilike(f"%{location}%"))
 
-    # Count total
     count_query = select(func.count()).select_from(query.subquery())
     total = await db.scalar(count_query)
 
-    # Paginate
     offset = (page - 1) * page_size
     result = await db.execute(
         query.options(selectinload(Job.company))
@@ -100,15 +90,12 @@ async def list_jobs(
     )
     jobs = result.scalars().all()
 
-    response_data = {
-        "items": [JobOut.model_validate(j).model_dump(mode="json") for j in jobs],
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": ceil(total / page_size) if total > 0 else 0,
-        "has_next": offset + page_size < total,
-        "has_previous": page > 1,
-    }
+    response_data = paginate(
+        items=[JobOut.model_validate(j).model_dump(mode="json") for j in jobs],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
     await set_cached_job_list(page, page_size, job_type, location, response_data)
     return response_data
 
@@ -117,7 +104,6 @@ async def list_jobs(
 async def get_job(job_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     query = select(Job).where(Job.id == job_id).options(selectinload(Job.company))
 
-    # SOFT-01: Exclude soft-deleted
     if hasattr(Job, "is_deleted"):
         query = query.where(Job.is_deleted == False)
 
@@ -152,8 +138,6 @@ async def update_job_status(
     return job
 
 
-# --- DELETE /jobs/{job_id} (SOFT-01: Soft Delete) ---
-
 @router.delete("/{job_id}")
 async def delete_job(
     job_id: uuid.UUID,
@@ -169,11 +153,9 @@ async def delete_job(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    # Validate ownership
     if job.created_by != recruiter.id:
         raise HTTPException(status_code=403, detail="You do not own this job posting")
 
-    # Prevent deletion if active applications exist
     active_count = await db.scalar(
         select(func.count(Application.id))
         .where(Application.job_id == job_id)
@@ -184,11 +166,11 @@ async def delete_job(
         raise HTTPException(
             status_code=400,
             detail=f"Cannot delete job with {active_count} active application(s). "
-                   "Close the job and resolve all active applications first."
+                   "Close the job and resolve all active applications first.",
         )
 
     job.is_deleted = True
-    job.deleted_at = datetime.utcnow()
+    job.deleted_at = datetime.now(timezone.utc)
     await db.commit()
     await invalidate_job_list_cache()
 

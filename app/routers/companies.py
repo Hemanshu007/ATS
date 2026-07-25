@@ -1,11 +1,9 @@
 import uuid
-from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.core.dependencies import get_current_recruiter
@@ -13,11 +11,10 @@ from app.models.company import Company
 from app.models.job import Job
 from app.models.recruiter import Recruiter
 from app.schemas.job import JobOut
+from app.schemas.pagination import paginate
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 
-
-# --- Schemas ---
 
 class CompanyOut(BaseModel):
     id: uuid.UUID
@@ -40,8 +37,6 @@ class CompanyUpdate(BaseModel):
     location: str | None = Field(default=None, max_length=100)
 
 
-# --- GET /companies/ (public, paginated) ---
-
 @router.get("/")
 async def list_companies(
     page: int = Query(default=1, ge=1),
@@ -58,18 +53,13 @@ async def list_companies(
     )
     companies = result.scalars().all()
 
-    return {
-        "items": [CompanyOut.model_validate(c) for c in companies],
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": ceil(total / page_size) if total > 0 else 0,
-        "has_next": offset + page_size < total,
-        "has_previous": page > 1,
-    }
+    return paginate(
+        items=[CompanyOut.model_validate(c) for c in companies],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
-
-# --- GET /companies/me (recruiter only) --- must be before /{company_id}
 
 @router.get("/me")
 async def get_my_company(
@@ -91,8 +81,6 @@ async def get_my_company(
         "open_jobs_count": open_jobs_count or 0,
     }
 
-
-# --- PATCH /companies/me (recruiter only) ---
 
 @router.patch("/me")
 async def update_my_company(
@@ -116,8 +104,6 @@ async def update_my_company(
     return CompanyOut.model_validate(company)
 
 
-# --- GET /companies/{company_id} (public) ---
-
 @router.get("/{company_id}")
 async def get_company(
     company_id: uuid.UUID,
@@ -138,8 +124,6 @@ async def get_company(
         "open_jobs_count": open_jobs_count or 0,
     }
 
-
-# --- GET /companies/{company_id}/jobs (public, paginated) ---
 
 @router.get("/{company_id}/jobs")
 async def get_company_jobs(
@@ -163,19 +147,15 @@ async def get_company_jobs(
 
     offset = (page - 1) * page_size
     result = await db.execute(
-        query.options(selectinload(Job.company))
-        .order_by(Job.created_at.desc())
+        query.order_by(Job.created_at.desc())
         .offset(offset)
         .limit(page_size)
     )
     jobs = result.scalars().all()
 
-    return {
-        "items": [JobOut.model_validate(j) for j in jobs],
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": ceil(total / page_size) if total > 0 else 0,
-        "has_next": offset + page_size < total,
-        "has_previous": page > 1,
-    }
+    return paginate(
+        items=[JobOut.model_validate(j) for j in jobs],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )

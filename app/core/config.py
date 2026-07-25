@@ -5,7 +5,8 @@ from pydantic import Field
 class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://ats:ats_secret@localhost:5432/ats_db"
     SECRET_KEY: str  # No default — must be set via env
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30  # 30 minutes
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     UPLOAD_DIR: str = "./uploads"
 
     # SMTP

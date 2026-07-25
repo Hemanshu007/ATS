@@ -1,7 +1,7 @@
 import asyncio
-import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
+import structlog
 from sqlalchemy import select, func
 
 from app.core.celery_app import celery_app
@@ -10,11 +10,11 @@ from app.core.constants import ACTIVE_STATUSES
 from app.database import async_session
 from app.models.application import Application, ApplicationStatusHistory
 
-logger = logging.getLogger("ats.scheduled")
+log = structlog.get_logger("ats.scheduled")
 
 
 async def _flag_stale_applications_async():
-    cutoff = datetime.utcnow() - timedelta(days=settings.STALE_APPLICATION_DAYS)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=settings.STALE_APPLICATION_DAYS)
 
     async with async_session() as db:
         subq = (
@@ -37,12 +37,15 @@ async def _flag_stale_applications_async():
         stale = result.all()
 
         for app_id, status, last_changed in stale:
-            logger.warning(
-                f"Stale application {app_id}: stuck in '{status}' since {last_changed} "
-                f"(>{settings.STALE_APPLICATION_DAYS} days)"
+            log.warn(
+                "application.stale",
+                application_id=str(app_id),
+                status=status,
+                last_changed=str(last_changed),
+                stale_days=settings.STALE_APPLICATION_DAYS,
             )
 
-        logger.info(f"Stale application sweep complete: {len(stale)} flagged")
+        log.info("stale_sweep.complete", flagged=len(stale))
         return len(stale)
 
 

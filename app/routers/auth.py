@@ -6,13 +6,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.core.config import settings
-from app.core.security import hash_password, verify_password, create_access_token, DUMMY_HASH
+from app.core.security import (
+    hash_password,
+    verify_password,
+    create_access_token,
+    create_refresh_token,
+    decode_refresh_token,
+    DUMMY_HASH,
+)
 from app.core.dependencies import get_current_user
 from app.models.user import User
 from app.models.candidate import Candidate
 from app.models.recruiter import Recruiter
 from app.models.company import Company
-from app.schemas.auth import RegisterRequest, LoginRequest, TokenResponse
+from app.schemas.auth import RegisterRequest, LoginRequest, TokenResponse, RefreshRequest
 from app.schemas.user import MeResponse, UserOut, CandidateOut, RecruiterOut
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -20,6 +27,14 @@ limiter = Limiter(
     key_func=get_remote_address,
     storage_uri=settings.REDIS_URL,
 )
+
+
+def _issue_token_pair(user: User) -> TokenResponse:
+    return TokenResponse(
+        access_token=create_access_token(str(user.id), user.role),
+        refresh_token=create_refresh_token(str(user.id)),
+        role=user.role,
+    )
 
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
@@ -48,8 +63,7 @@ async def register(request: Request, body: RegisterRequest, db: AsyncSession = D
         db.add(candidate)
 
     await db.commit()
-    token = create_access_token(str(user.id), user.role)
-    return TokenResponse(access_token=token, role=user.role)
+    return _issue_token_pair(user)
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -57,13 +71,30 @@ async def register(request: Request, body: RegisterRequest, db: AsyncSession = D
 async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends(get_db)):
     user = await db.scalar(select(User).where(User.email == body.email))
     if not user:
-        # Timing-safe: run bcrypt even when user doesn't exist
         verify_password("dummy", DUMMY_HASH)
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not verify_password(body.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    token = create_access_token(str(user.id), user.role)
-    return TokenResponse(access_token=token, role=user.role)
+    return _issue_token_pair(user)
+
+
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh_token(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
+    payload = decode_refresh_token(body.refresh_token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+
+    import uuid as uuid_mod
+    try:
+        user_id = uuid_mod.UUID(payload["sub"])
+    except (ValueError, KeyError):
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    return _issue_token_pair(user)
 
 
 @router.get("/me", response_model=MeResponse)

@@ -101,3 +101,57 @@ async def test_me_invalid_token(client: AsyncClient):
 async def test_me_no_token(client: AsyncClient):
     resp = await client.get("/auth/me")
     assert resp.status_code == 403
+
+
+async def test_register_returns_refresh_token(client: AsyncClient):
+    resp = await client.post("/auth/register", json={
+        "email": "refresh_test@test.com", "password": "pass1234",
+        "role": "candidate", "name": "RefreshUser"
+    })
+    assert resp.status_code == 201
+    data = resp.json()
+    assert "access_token" in data
+    assert "refresh_token" in data
+    assert data["token_type"] == "bearer"
+
+
+async def test_login_returns_refresh_token(client: AsyncClient):
+    await client.post("/auth/register", json={
+        "email": "reflogin@test.com", "password": "pass1234",
+        "role": "candidate", "name": "X"
+    })
+    resp = await client.post("/auth/login", json={
+        "email": "reflogin@test.com", "password": "pass1234"
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "refresh_token" in data
+
+
+async def test_refresh_token_success(client: AsyncClient):
+    reg = await client.post("/auth/register", json={
+        "email": "refresh_ok@test.com", "password": "pass1234",
+        "role": "candidate", "name": "RefreshUser"
+    })
+    refresh = reg.json()["refresh_token"]
+    resp = await client.post("/auth/refresh", json={"refresh_token": refresh})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "access_token" in data
+    assert "refresh_token" in data
+    assert data["role"] == "candidate"
+
+
+async def test_refresh_token_invalid(client: AsyncClient):
+    resp = await client.post("/auth/refresh", json={"refresh_token": "bad.token.value"})
+    assert resp.status_code == 401
+
+
+async def test_refresh_token_access_token_fails(client: AsyncClient):
+    reg = await client.post("/auth/register", json={
+        "email": "acc_token@test.com", "password": "pass1234",
+        "role": "candidate", "name": "X"
+    })
+    access = reg.json()["access_token"]
+    resp = await client.post("/auth/refresh", json={"refresh_token": access})
+    assert resp.status_code == 401

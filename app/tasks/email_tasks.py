@@ -1,11 +1,11 @@
-import logging
 import smtplib
 from email.mime.text import MIMEText
 
+import structlog
 from app.core.celery_app import celery_app
 from app.core.config import settings
 
-logger = logging.getLogger("ats.email")
+log = structlog.get_logger("ats.email")
 
 
 def _mask_email(email: str) -> str:
@@ -36,7 +36,7 @@ def send_status_change_email_task(
     )
 
     if not settings.SMTP_USER:
-        logger.info(f"[NO SMTP] To: {_mask_email(candidate_email)} | Subject: {subject}")
+        log.info("email.skipped_no_smtp", to=_mask_email(candidate_email), subject=subject)
         return
 
     msg = MIMEText(body)
@@ -49,7 +49,7 @@ def send_status_change_email_task(
             server.starttls()
             server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
             server.send_message(msg)
-        logger.info(f"Email sent to {_mask_email(candidate_email)}")
+        log.info("email.sent", to=_mask_email(candidate_email), status=new_status)
     except Exception as exc:
-        logger.error(f"Failed to send email to {_mask_email(candidate_email)}: {exc}")
+        log.error("email.failed", to=_mask_email(candidate_email), error=str(exc))
         raise self.retry(exc=exc)

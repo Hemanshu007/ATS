@@ -1,5 +1,4 @@
 import uuid
-from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func
@@ -11,11 +10,10 @@ from app.core.constants import ACTIVE_STATUSES
 from app.models.candidate import Candidate
 from app.models.document import Document
 from app.models.application import Application
+from app.schemas.pagination import paginate
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
-
-# --- GET /documents/me (paginated) ---
 
 @router.get("/me")
 async def list_my_documents(
@@ -44,18 +42,13 @@ async def list_my_documents(
         for doc in documents
     ]
 
-    return {
-        "items": items,
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": ceil(total / page_size) if total > 0 else 0,
-        "has_next": offset + page_size < total,
-        "has_previous": page > 1,
-    }
+    return paginate(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
-
-# --- DELETE /documents/{document_id} ---
 
 @router.delete("/{document_id}")
 async def delete_document(
@@ -67,11 +60,9 @@ async def delete_document(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Verify ownership
     if document.candidate_id != candidate.id:
         raise HTTPException(status_code=403, detail="Not your document")
 
-    # Check if linked to active application
     active_app = await db.scalar(
         select(Application)
         .where(Application.document_id == document_id)
@@ -80,15 +71,14 @@ async def delete_document(
     if active_app:
         raise HTTPException(
             status_code=409,
-            detail="Cannot delete document linked to an active application"
+            detail="Cannot delete document linked to an active application",
         )
 
-    # Delete from S3 if configured
     try:
         from app.services.s3 import delete_resume
         delete_resume(document.file_path)
     except (ImportError, RuntimeError):
-        pass  # S3 not configured, skip
+        pass
 
     await db.delete(document)
     await db.commit()

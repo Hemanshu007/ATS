@@ -1,26 +1,23 @@
 import uuid
-from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, and_
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.core.dependencies import get_current_recruiter
 from app.models.recruiter import Recruiter
 from app.models.application import Application
-from app.models.job import Job
 from app.models.interview import InterviewRound
 from app.schemas.interview import InterviewCreate, InterviewOut, OutcomeUpdate
+from app.services.interview_service import check_interview_overlap
 
 router = APIRouter(prefix="/interviews", tags=["interviews"])
 
-INTERVIEW_DURATION = timedelta(hours=1)
-
 
 async def _verify_ownership(app_id: uuid.UUID, recruiter: Recruiter, db) -> Application:
+    from sqlalchemy.orm import selectinload
     application = await db.scalar(
         select(Application).where(Application.id == app_id).options(selectinload(Application.job))
     )
@@ -39,39 +36,19 @@ async def create_interview(
 ):
     await _verify_ownership(body.application_id, recruiter, db)
 
-    # Validate round_number range
     if body.round_number < 1 or body.round_number > 100:
         raise HTTPException(
             status_code=422,
-            detail="Round number must be between 1 and 100 inclusive"
+            detail="Round number must be between 1 and 100 inclusive",
         )
 
-    # Validate conducted_by exists
     if body.conducted_by:
         interviewer = await db.get(Recruiter, body.conducted_by)
         if not interviewer:
             raise HTTPException(status_code=400, detail="Interviewer not found")
 
-    # Check overlap for the interviewer
     if body.scheduled_at and body.conducted_by:
-        start = body.scheduled_at.replace(tzinfo=None) if body.scheduled_at.tzinfo else body.scheduled_at
-        end = start + INTERVIEW_DURATION
-        result = await db.execute(
-            select(InterviewRound).where(
-                and_(
-                    InterviewRound.conducted_by == body.conducted_by,
-                    InterviewRound.scheduled_at.isnot(None),
-                )
-            )
-        )
-        for existing in result.scalars():
-            existing_start = existing.scheduled_at.replace(tzinfo=None) if existing.scheduled_at.tzinfo else existing.scheduled_at
-            existing_end = existing_start + INTERVIEW_DURATION
-            if start < existing_end and end > existing_start:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"Interviewer has a conflicting interview at {existing.scheduled_at}",
-                )
+        await check_interview_overlap(body.conducted_by, body.scheduled_at, db)
 
     interview = InterviewRound(
         application_id=body.application_id,
@@ -81,14 +58,13 @@ async def create_interview(
     )
     db.add(interview)
 
-    # FIX-05: Handle IntegrityError for duplicate round number
     try:
         await db.commit()
     except IntegrityError:
         await db.rollback()
         raise HTTPException(
             status_code=409,
-            detail=f"Round {body.round_number} already exists for this application"
+            detail=f"Round {body.round_number} already exists for this application",
         )
 
     await db.refresh(interview)
@@ -128,8 +104,6 @@ async def update_outcome(
     return interview
 
 
-# --- ENDPOINT-05: Interview Round Detail ---
-
 @router.get("/{interview_id}", response_model=InterviewOut)
 async def get_interview_detail(
     interview_id: uuid.UUID,
@@ -143,8 +117,6 @@ async def get_interview_detail(
     return interview
 
 
-# --- ENDPOINT-05: Cancel Interview Round ---
-
 @router.delete("/{interview_id}")
 async def cancel_interview(
     interview_id: uuid.UUID,
@@ -156,11 +128,10 @@ async def cancel_interview(
         raise HTTPException(status_code=404, detail="Interview round not found")
     await _verify_ownership(interview.application_id, recruiter, db)
 
-    # Can only cancel if outcome is still pending
     if interview.outcome != "pending":
         raise HTTPException(
             status_code=409,
-            detail="Cannot cancel a completed interview"
+            detail="Cannot cancel a completed interview",
         )
 
     interview.outcome = "cancelled"

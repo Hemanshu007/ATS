@@ -1,9 +1,9 @@
 import asyncio
-import logging
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
+import structlog
 from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.database import async_session
@@ -12,14 +12,14 @@ from app.models.job import Job
 from app.services.llm_extraction import extract_text_from_pdf, extract_resume_data
 from app.services.embeddings import generate_embedding
 
-logger = logging.getLogger("ats.tasks")
+log = structlog.get_logger("ats.tasks")
 
 
 async def _process_resume_async(document_id: str):
     async with async_session() as db:
         document = await db.get(Document, uuid.UUID(document_id))
         if not document:
-            logger.error(f"Document {document_id} not found for processing")
+            log.error("document.not_found", document_id=document_id)
             return
 
         try:
@@ -29,7 +29,7 @@ async def _process_resume_async(document_id: str):
 
             text = extract_text_from_pdf(file_bytes)
             if not text.strip():
-                logger.warning(f"No text extracted from document {document_id}")
+                log.warn("document.empty_text", document_id=document_id)
                 return
 
             extraction = await extract_resume_data(text)
@@ -41,13 +41,13 @@ async def _process_resume_async(document_id: str):
 
             document.parsed_data = extraction.model_dump()
             document.embedding = embedding
-            document.parsed_at = datetime.utcnow()
+            document.parsed_at = datetime.now(timezone.utc)
             await db.commit()
 
-            logger.info(f"Document {document_id} processed successfully")
+            log.info("document.processed", document_id=document_id)
 
         except Exception as e:
-            logger.error(f"Failed to process document {document_id}: {e}")
+            log.error("document.process_failed", document_id=document_id, error=str(e))
             await db.rollback()
 
 
@@ -60,16 +60,16 @@ async def _generate_job_embedding_async(job_id: str):
     async with async_session() as db:
         job = await db.get(Job, uuid.UUID(job_id))
         if not job:
-            logger.error(f"Job {job_id} not found for embedding")
+            log.error("job.embedding_not_found", job_id=job_id)
             return
 
         try:
             embedding = await generate_embedding(job.description)
             job.embedding = embedding
             await db.commit()
-            logger.info(f"Job {job_id} embedding generated successfully")
+            log.info("job.embedding_generated", job_id=job_id)
         except Exception as e:
-            logger.error(f"Failed to generate embedding for job {job_id}: {e}")
+            log.error("job.embedding_failed", job_id=job_id, error=str(e))
             await db.rollback()
 
 
