@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
+from app.core.cache import get_cached_job_list, set_cached_job_list, invalidate_job_list_cache
 from app.core.dependencies import get_current_recruiter
 from app.core.constants import ACTIVE_STATUSES
 from app.models.job import Job
@@ -34,6 +35,7 @@ async def create_job(
     )
     db.add(job)
     await db.commit()
+    await invalidate_job_list_cache()
     await db.refresh(job, attribute_names=["company"])
     return job
 
@@ -62,6 +64,14 @@ async def list_jobs(
                 status_code=422,
                 detail=f"Invalid job_type '{job_type}'. Must be one of: {valid_types}"
             )
+
+    # Check cache (after input validation, before DB query)
+    cached = await get_cached_job_list(page, page_size, job_type, location)
+    if cached is not None:
+        return cached
+
+    # FILTER-02: Filter by job_type
+    if job_type:
         query = query.where(Job.job_type == job_type)
 
     # FILTER-02: Filter by location (case-insensitive partial match)
@@ -82,8 +92,8 @@ async def list_jobs(
     )
     jobs = result.scalars().all()
 
-    return {
-        "items": [JobOut.model_validate(j) for j in jobs],
+    response_data = {
+        "items": [JobOut.model_validate(j).model_dump(mode="json") for j in jobs],
         "total": total,
         "page": page,
         "page_size": page_size,
@@ -91,6 +101,8 @@ async def list_jobs(
         "has_next": offset + page_size < total,
         "has_previous": page > 1,
     }
+    await set_cached_job_list(page, page_size, job_type, location, response_data)
+    return response_data
 
 
 @router.get("/{job_id}", response_model=JobOut)
@@ -127,6 +139,7 @@ async def update_job_status(
         raise HTTPException(status_code=403, detail="Not your job posting")
     job.status = body.status
     await db.commit()
+    await invalidate_job_list_cache()
     await db.refresh(job)
     return job
 
@@ -169,5 +182,6 @@ async def delete_job(
     job.is_deleted = True
     job.deleted_at = datetime.utcnow()
     await db.commit()
+    await invalidate_job_list_cache()
 
     return {"message": "Job deleted successfully"}
