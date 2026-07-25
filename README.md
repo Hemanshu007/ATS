@@ -9,7 +9,7 @@ Backend API for managing the hiring pipeline — job posting, applications, stat
 - **Alembic** for migrations
 - **JWT** auth (python-jose + passlib/bcrypt)
 - **Local filesystem** for resume storage
-- **BackgroundTasks** for email notifications (logged to console)
+- **Celery + Redis** for email notifications (durable, retriable)
 - **uv** for dependency management
 - **Docker Compose** for orchestration
 
@@ -20,7 +20,7 @@ Backend API for managing the hiring pipeline — job posting, applications, stat
 cp .env.example .env
 # Edit .env with your Fastmail SMTP credentials
 
-# 2. Start services
+# 2. Start services (includes API, DB, Redis, and Celery worker)
 docker compose up --build -d
 
 # 3. Run migrations (inside api container)
@@ -50,10 +50,13 @@ Company: **TechCorp** (Technology, Bangalore)
 # Install dependencies
 uv sync
 
-# Start PostgreSQL separately, then:
+# Start PostgreSQL and Redis separately, then:
 uv run alembic upgrade head
 uv run python seed.py
 uv run uvicorn app.main:app --reload
+
+# In a separate terminal, start the Celery worker for email sending:
+uv run celery -A app.core.celery_app worker --loglevel=info
 ```
 
 ## API Endpoints
