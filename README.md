@@ -9,7 +9,9 @@ Backend API for managing the hiring pipeline — job posting, applications, stat
 - **Alembic** for migrations
 - **JWT** auth (python-jose + passlib/bcrypt)
 - **Local filesystem** for resume storage
-- **Celery + Redis** for email notifications (durable, retriable) and scheduled tasks (stale-application sweep)
+- **Celery + Redis** for email notifications (durable, retriable), scheduled tasks (stale-application sweep), and resume processing (LLM extraction + embeddings)
+- **OpenAI** for resume parsing (structured extraction) and semantic matching (embeddings)
+- **pgvector** for vector similarity search (candidate-job matching)
 - **uv** for dependency management
 - **Docker Compose** for orchestration
 

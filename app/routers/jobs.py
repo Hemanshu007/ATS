@@ -37,6 +37,14 @@ async def create_job(
     await db.commit()
     await invalidate_job_list_cache()
     await db.refresh(job, attribute_names=["company"])
+
+    # Dispatch job embedding generation (fire-and-forget, non-critical)
+    try:
+        from app.tasks.resume_processing_tasks import generate_job_embedding
+        generate_job_embedding.delay(str(job.id))
+    except Exception:
+        pass
+
     return job
 
 

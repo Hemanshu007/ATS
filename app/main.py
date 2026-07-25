@@ -6,7 +6,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.routers import auth, jobs, applications, interviews, notes
-from app.routers import companies, recruiters, candidates, documents, health
+from app.routers import companies, recruiters, candidates, documents, health, matching
 from app.routers.auth import limiter
 
 logging.basicConfig(level=logging.INFO)
@@ -50,3 +50,6 @@ app.include_router(recruiters.router)
 app.include_router(candidates.router)
 app.include_router(documents.router)
 app.include_router(health.router)
+
+# RAG matching
+app.include_router(matching.router)

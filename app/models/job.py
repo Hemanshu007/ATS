@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import String, Text, Boolean, DateTime, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -22,6 +23,8 @@ class Job(Base):
 
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
+
+    embedding = mapped_column(Vector(1536), nullable=True)
 
     company = relationship("Company", back_populates="jobs")
     creator = relationship("Recruiter", back_populates="jobs")

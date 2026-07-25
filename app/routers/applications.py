@@ -134,11 +134,18 @@ async def apply(
         raise HTTPException(status_code=400, detail="Application could not be created")
 
     await db.refresh(application)
+
+    # Dispatch resume processing (fire-and-forget, non-critical)
+    try:
+        from app.tasks.resume_processing_tasks import process_resume
+        process_resume.delay(str(doc.id))
+    except Exception:
+        pass
+
     return application
 
 
 # --- GET /applications/job/{job_id} with pagination + status filter ---
-
 @router.get("/job/{job_id}")
 async def list_applications_for_job(
     job_id: uuid.UUID,

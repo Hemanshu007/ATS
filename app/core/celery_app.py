@@ -7,7 +7,7 @@ celery_app = Celery(
     "ats",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
-    include=["app.tasks.email_tasks", "app.tasks.scheduled_tasks"],
+    include=["app.tasks.email_tasks", "app.tasks.scheduled_tasks", "app.tasks.resume_processing_tasks"],
 )
 
 celery_app.conf.update(

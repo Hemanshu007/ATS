@@ -9,9 +9,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///./test.db"
 os.environ["SECRET_KEY"] = "test-secret"
 os.environ["UPLOAD_DIR"] = "/tmp/ats_test_uploads"
+os.environ["CELERY_BROKER_URL"] = "memory://"
+os.environ["CELERY_RESULT_BACKEND"] = "cache+memory://"
 
 import pytest
 import pytest_asyncio
+import sqlalchemy as sa
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
@@ -40,6 +43,12 @@ app.dependency_overrides[get_db] = override_get_db
 @pytest_asyncio.fixture(autouse=True)
 async def setup_db():
     os.makedirs("/tmp/ats_test_uploads/resumes", exist_ok=True)
+    # Patch Vector columns to JSON for SQLite compatibility
+    from pgvector.sqlalchemy import Vector
+    for table in Base.metadata.tables.values():
+        for column in table.columns:
+            if isinstance(column.type, Vector):
+                column.type = sa.JSON()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
