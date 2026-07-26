@@ -33,10 +33,18 @@ class Settings(BaseSettings):
     # Scheduled tasks
     STALE_APPLICATION_DAYS: int = 14
 
-    # OpenAI (for resume parsing + embeddings)
+    # LLM provider: "openai" or "gemini"
+    LLM_PROVIDER: str = "gemini"
+
+    # OpenAI (used when LLM_PROVIDER=openai)
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o-mini"
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
+
+    # Gemini (used when LLM_PROVIDER=gemini)
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-1.5-flash"
+    GEMINI_EMBEDDING_MODEL: str = "text-embedding-004"
 
     class Config:
         env_file = ".env"

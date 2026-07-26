@@ -1,4 +1,5 @@
 import io
+import json
 import logging
 from typing import Optional
 
@@ -55,10 +56,7 @@ Resume text:
 {resume_text}"""
 
 
-async def extract_resume_data(resume_text: str) -> ResumeExtraction:
-    if not settings.OPENAI_API_KEY:
-        raise ValueError("OPENAI_API_KEY not configured")
-
+async def _extract_with_openai(resume_text: str) -> ResumeExtraction:
     from openai import AsyncOpenAI
 
     client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
@@ -73,7 +71,40 @@ async def extract_resume_data(resume_text: str) -> ResumeExtraction:
         temperature=0,
     )
 
-    import json
     content = response.choices[0].message.content
     data = json.loads(content)
     return ResumeExtraction(**data)
+
+
+async def _extract_with_gemini(resume_text: str) -> ResumeExtraction:
+    import google.generativeai as genai
+
+    genai.configure(api_key=settings.GEMINI_API_KEY)
+    model = genai.GenerativeModel(settings.GEMINI_MODEL)
+
+    prompt = (
+        "You are a resume parsing assistant. Extract structured data and return valid JSON.\n\n"
+        + EXTRACTION_PROMPT.format(resume_text=resume_text)
+    )
+
+    response = await model.generate_content_async(
+        prompt,
+        generation_config=genai.types.GenerationConfig(
+            temperature=0,
+            response_mime_type="application/json",
+        ),
+    )
+
+    data = json.loads(response.text)
+    return ResumeExtraction(**data)
+
+
+async def extract_resume_data(resume_text: str) -> ResumeExtraction:
+    if settings.LLM_PROVIDER == "gemini":
+        if not settings.GEMINI_API_KEY:
+            raise ValueError("GEMINI_API_KEY not configured")
+        return await _extract_with_gemini(resume_text)
+
+    if not settings.OPENAI_API_KEY:
+        raise ValueError("OPENAI_API_KEY not configured")
+    return await _extract_with_openai(resume_text)

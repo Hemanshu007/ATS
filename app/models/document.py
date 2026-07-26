@@ -18,7 +18,7 @@ class Document(Base):
     uploaded_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     parsed_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(768), nullable=True)
     parsed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     candidate = relationship("Candidate", back_populates="documents")

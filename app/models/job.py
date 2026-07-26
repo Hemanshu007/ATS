@@ -24,7 +24,7 @@ class Job(Base):
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
 
-    embedding = mapped_column(Vector(1536), nullable=True)
+    embedding = mapped_column(Vector(768), nullable=True)
 
     company = relationship("Company", back_populates="jobs")
     creator = relationship("Recruiter", back_populates="jobs")
