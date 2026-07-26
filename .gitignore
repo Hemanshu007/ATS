@@ -5,3 +5,8 @@ uploads/
 .venv/
 *.egg-info/
 test.db
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+*.sqlite3
