@@ -35,4 +35,5 @@ dev = [
     "pytest-cov==5.0.0",
     "aiosqlite==0.20.0",
     "fpdf2>=2.8.7",
+    "locust>=2.46.0",
 ]
