@@ -14,7 +14,8 @@ log = structlog.get_logger("ats.scheduled")
 
 
 async def _flag_stale_applications_async():
-    cutoff = datetime.now(timezone.utc) - timedelta(days=settings.STALE_APPLICATION_DAYS)
+    from datetime import datetime as dt
+    cutoff = dt.utcnow() - timedelta(days=settings.STALE_APPLICATION_DAYS)
 
     async with async_session() as db:
         subq = (
@@ -51,4 +52,4 @@ async def _flag_stale_applications_async():
 
 @celery_app.task(name="app.tasks.scheduled_tasks.flag_stale_applications")
 def flag_stale_applications():
-    asyncio.run(_flag_stale_applications_async())
+    return asyncio.run(_flag_stale_applications_async())

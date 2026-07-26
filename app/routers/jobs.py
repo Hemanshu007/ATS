@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, func
@@ -170,7 +170,7 @@ async def delete_job(
         )
 
     job.is_deleted = True
-    job.deleted_at = datetime.now(timezone.utc)
+    job.deleted_at = datetime.utcnow()
     await db.commit()
     await invalidate_job_list_cache()
 

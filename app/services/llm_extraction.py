@@ -3,7 +3,7 @@ import json
 import logging
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from pypdf import PdfReader
 
 from app.core.config import settings
@@ -12,24 +12,24 @@ logger = logging.getLogger("ats.llm")
 
 
 class Education(BaseModel):
-    degree: str
-    institution: str
+    degree: Optional[str] = ""
+    institution: Optional[str] = ""
 
 
 class WorkHistory(BaseModel):
-    role: str
-    company: str
-    duration: str
+    role: Optional[str] = ""
+    company: Optional[str] = ""
+    duration: Optional[str] = ""
 
 
 class ResumeExtraction(BaseModel):
-    name: str
-    email: str
-    phone: str
-    skills: list[str]
+    name: Optional[str] = ""
+    email: Optional[str] = ""
+    phone: Optional[str] = ""
+    skills: list[str] = []
     years_of_experience: Optional[float] = None
-    education: list[Education]
-    work_history: list[WorkHistory]
+    education: list[Education] = []
+    work_history: list[WorkHistory] = []
 
 
 def extract_text_from_pdf(file_bytes: bytes) -> str:
@@ -77,19 +77,17 @@ async def _extract_with_openai(resume_text: str) -> ResumeExtraction:
 
 
 async def _extract_with_gemini(resume_text: str) -> ResumeExtraction:
-    import google.generativeai as genai
+    from google import genai
 
-    genai.configure(api_key=settings.GEMINI_API_KEY)
-    model = genai.GenerativeModel(settings.GEMINI_MODEL)
+    client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
-    prompt = (
-        "You are a resume parsing assistant. Extract structured data and return valid JSON.\n\n"
-        + EXTRACTION_PROMPT.format(resume_text=resume_text)
-    )
-
-    response = await model.generate_content_async(
-        prompt,
-        generation_config=genai.types.GenerationConfig(
+    response = await client.aio.models.generate_content(
+        model=settings.GEMINI_MODEL,
+        contents=(
+            "You are a resume parsing assistant. Extract structured data and return valid JSON.\n\n"
+            + EXTRACTION_PROMPT.format(resume_text=resume_text)
+        ),
+        config=genai.types.GenerateContentConfig(
             temperature=0,
             response_mime_type="application/json",
         ),

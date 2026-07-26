@@ -19,16 +19,16 @@ async def _generate_with_openai(text: str) -> list[float]:
 
 
 async def _generate_with_gemini(text: str) -> list[float]:
-    import google.generativeai as genai
+    from google import genai
 
-    genai.configure(api_key=settings.GEMINI_API_KEY)
+    client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
-    result = await genai.embed_content_async(
-        model=f"models/{settings.GEMINI_EMBEDDING_MODEL}",
-        content=text,
+    result = await client.aio.models.embed_content(
+        model=settings.GEMINI_EMBEDDING_MODEL,
+        contents=text,
     )
 
-    return result["embedding"]
+    return result.embeddings[0].values
 
 
 async def generate_embedding(text: str) -> list[float]:

@@ -43,8 +43,8 @@ class Settings(BaseSettings):
 
     # Gemini (used when LLM_PROVIDER=gemini)
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-1.5-flash"
-    GEMINI_EMBEDDING_MODEL: str = "text-embedding-004"
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_EMBEDDING_MODEL: str = "gemini-embedding-001"
 
     class Config:
         env_file = ".env"

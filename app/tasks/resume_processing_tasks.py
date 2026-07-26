@@ -1,7 +1,7 @@
 import asyncio
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
 import structlog
 from app.core.celery_app import celery_app
@@ -41,7 +41,7 @@ async def _process_resume_async(document_id: str):
 
             document.parsed_data = extraction.model_dump()
             document.embedding = embedding
-            document.parsed_at = datetime.now(timezone.utc)
+            document.parsed_at = datetime.utcnow()
             await db.commit()
 
             log.info("document.processed", document_id=document_id)
