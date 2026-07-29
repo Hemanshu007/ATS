@@ -1,9 +1,10 @@
-import asyncio
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 import structlog
+from sqlalchemy import select
+
 from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.database import async_session
@@ -41,7 +42,7 @@ async def _process_resume_async(document_id: str):
 
             document.parsed_data = extraction.model_dump()
             document.embedding = embedding
-            document.parsed_at = datetime.utcnow()
+            document.parsed_at = datetime.now(timezone.utc)
             await db.commit()
 
             log.info("document.processed", document_id=document_id)
@@ -51,9 +52,21 @@ async def _process_resume_async(document_id: str):
             await db.rollback()
 
 
-@celery_app.task(name="app.tasks.resume_processing_tasks.process_resume")
+@celery_app.task(
+    name="app.tasks.resume_processing_tasks.process_resume",
+    bind=True,
+    max_retries=3,
+    default_retry_delay=60,
+    autoretry_for=(Exception,),
+)
 def process_resume(document_id: str):
-    asyncio.run(_process_resume_async(document_id))
+    import asyncio
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(_process_resume_async(document_id))
+    finally:
+        loop.close()
 
 
 async def _generate_job_embedding_async(job_id: str):
@@ -73,6 +86,18 @@ async def _generate_job_embedding_async(job_id: str):
             await db.rollback()
 
 
-@celery_app.task(name="app.tasks.resume_processing_tasks.generate_job_embedding")
+@celery_app.task(
+    name="app.tasks.resume_processing_tasks.generate_job_embedding",
+    bind=True,
+    max_retries=3,
+    default_retry_delay=60,
+    autoretry_for=(Exception,),
+)
 def generate_job_embedding(job_id: str):
-    asyncio.run(_generate_job_embedding_async(job_id))
+    import asyncio
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(_generate_job_embedding_async(job_id))
+    finally:
+        loop.close()

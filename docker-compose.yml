@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:15
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: ats
       POSTGRES_PASSWORD: ats_secret
@@ -9,22 +9,25 @@ services:
       - "127.0.0.1:5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ats"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   api:
     build: .
-    command: ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    command: ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     ports:
-      - "8001:8000"
+      - "8000:8000"
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
     env_file:
       - .env
-    volumes:
-      - ./app:/app/app
-      - ./uploads:/app/uploads
-      - ./seed.py:/app/seed.py
-      - ./alembic:/app/alembic
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
@@ -32,28 +35,35 @@ services:
       - "127.0.0.1:6380:6379"
     volumes:
       - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   worker:
     build: .
     command: ["uv", "run", "celery", "-A", "app.core.celery_app", "worker", "--loglevel=info"]
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
     env_file:
       - .env
-    volumes:
-      - ./app:/app/app
+    restart: unless-stopped
 
   beat:
     build: .
     command: ["uv", "run", "celery", "-A", "app.core.celery_app", "beat", "--loglevel=info"]
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
     env_file:
       - .env
-    volumes:
-      - ./app:/app/app
+    restart: unless-stopped
 
 volumes:
   pgdata:

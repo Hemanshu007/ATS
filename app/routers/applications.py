@@ -1,5 +1,6 @@
 import uuid
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks, Query, status
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
@@ -24,6 +25,8 @@ from app.schemas.application import ApplicationOut, StatusUpdate, StatusHistoryO
 from app.schemas.pagination import paginate
 from app.services.email import send_status_change_email
 from app.services.application_service import validate_status_transition
+
+log = structlog.get_logger("ats.applications")
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 
@@ -122,8 +125,8 @@ async def apply(
     try:
         from app.tasks.resume_processing_tasks import process_resume
         process_resume.delay(str(doc.id))
-    except Exception:
-        pass
+    except Exception as e:
+        log.warn("resume_processing.dispatch_failed", document_id=str(doc.id), error=str(e))
 
     return application
 
@@ -346,9 +349,8 @@ async def get_resume_download_url(
             "expires_in_seconds": 3600,
             "expires_in_human": "1 hour",
         }
-    except ImportError:
+    except (ImportError, RuntimeError):
         return {
-            "file_path": document.file_path,
             "filename": document.original_filename,
-            "message": "S3 not configured. File is stored locally.",
+            "message": "Resume storage is not available for remote download.",
         }

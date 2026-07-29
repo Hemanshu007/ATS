@@ -16,6 +16,10 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
+    broker_connection_retry_on_startup=True,
+    result_expires=settings.CELERY_TASK_RESULT_EXPIRES,
+    worker_concurrency=settings.CELERY_WORKER_CONCURRENCY,
+    task_soft_time_limit=settings.CELERY_TASK_SOFT_TIME_LIMIT,
 )
 
 celery_app.conf.beat_schedule = {

@@ -1,7 +1,6 @@
-import json
-
 import structlog
-from app.core.redis_client import redis_client
+
+from app.core.redis_client import get_redis
 
 log = structlog.get_logger("ats.cache")
 
@@ -13,11 +12,24 @@ def _job_list_cache_key(page: int, page_size: int, job_type: str | None, locatio
     return f"{JOB_LIST_CACHE_PREFIX}{page}:{page_size}:{job_type or ''}:{location or ''}"
 
 
+async def _cache_version_key() -> str:
+    return f"{JOB_LIST_CACHE_PREFIX}_version"
+
+
+async def _get_cache_version() -> int:
+    r = await get_redis()
+    v = await r.get(await _cache_version_key())
+    return int(v) if v else 1
+
+
 async def get_cached_job_list(page: int, page_size: int, job_type: str | None, location: str | None) -> dict | None:
     try:
-        key = _job_list_cache_key(page, page_size, job_type, location)
-        cached = await redis_client.get(key)
+        r = await get_redis()
+        version = await _get_cache_version()
+        key = _job_list_cache_key(version, page, page_size, job_type, location)
+        cached = await r.get(key)
         if cached:
+            import json
             log.debug("cache.hit", key=key)
             return json.loads(cached)
         log.debug("cache.miss", key=key)
@@ -29,8 +41,11 @@ async def get_cached_job_list(page: int, page_size: int, job_type: str | None, l
 
 async def set_cached_job_list(page: int, page_size: int, job_type: str | None, location: str | None, data: dict) -> None:
     try:
-        key = _job_list_cache_key(page, page_size, job_type, location)
-        await redis_client.set(key, json.dumps(data, default=str), ex=JOB_LIST_CACHE_TTL_SECONDS)
+        r = await get_redis()
+        version = await _get_cache_version()
+        key = _job_list_cache_key(version, page, page_size, job_type, location)
+        import json
+        await r.set(key, json.dumps(data, default=str), ex=JOB_LIST_CACHE_TTL_SECONDS)
         log.debug("cache.set", key=key)
     except Exception as e:
         log.warn("cache.write_failed", error=str(e))
@@ -38,9 +53,9 @@ async def set_cached_job_list(page: int, page_size: int, job_type: str | None, l
 
 async def invalidate_job_list_cache() -> None:
     try:
-        keys = await redis_client.keys(f"{JOB_LIST_CACHE_PREFIX}*")
-        if keys:
-            await redis_client.delete(*keys)
-            log.debug("cache.invalidated", count=len(keys))
+        r = await get_redis()
+        version_key = await _cache_version_key()
+        await r.incr(version_key)
+        log.debug("cache.invalidated")
     except Exception as e:
         log.warn("cache.invalidation_failed", error=str(e))

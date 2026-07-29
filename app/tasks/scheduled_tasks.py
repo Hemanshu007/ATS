@@ -1,4 +1,3 @@
-import asyncio
 from datetime import datetime, timedelta, timezone
 
 import structlog
@@ -14,42 +13,51 @@ log = structlog.get_logger("ats.scheduled")
 
 
 async def _flag_stale_applications_async():
-    from datetime import datetime as dt
-    cutoff = dt.utcnow() - timedelta(days=settings.STALE_APPLICATION_DAYS)
+    try:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=settings.STALE_APPLICATION_DAYS)
 
-    async with async_session() as db:
-        subq = (
-            select(
-                ApplicationStatusHistory.application_id,
-                func.max(ApplicationStatusHistory.changed_at).label("last_changed"),
-            )
-            .group_by(ApplicationStatusHistory.application_id)
-            .subquery()
-        )
-
-        query = (
-            select(Application.id, Application.current_status, subq.c.last_changed)
-            .join(subq, Application.id == subq.c.application_id)
-            .where(Application.current_status.in_(ACTIVE_STATUSES))
-            .where(subq.c.last_changed < cutoff)
-        )
-
-        result = await db.execute(query)
-        stale = result.all()
-
-        for app_id, status, last_changed in stale:
-            log.warn(
-                "application.stale",
-                application_id=str(app_id),
-                status=status,
-                last_changed=str(last_changed),
-                stale_days=settings.STALE_APPLICATION_DAYS,
+        async with async_session() as db:
+            subq = (
+                select(
+                    ApplicationStatusHistory.application_id,
+                    func.max(ApplicationStatusHistory.changed_at).label("last_changed"),
+                )
+                .group_by(ApplicationStatusHistory.application_id)
+                .subquery()
             )
 
-        log.info("stale_sweep.complete", flagged=len(stale))
-        return len(stale)
+            query = (
+                select(Application.id, Application.current_status, subq.c.last_changed)
+                .join(subq, Application.id == subq.c.application_id)
+                .where(Application.current_status.in_(ACTIVE_STATUSES))
+                .where(subq.c.last_changed < cutoff)
+            )
+
+            result = await db.execute(query)
+            stale = result.all()
+
+            for app_id, status, last_changed in stale:
+                log.warn(
+                    "application.stale",
+                    application_id=str(app_id),
+                    status=status,
+                    last_changed=str(last_changed),
+                    stale_days=settings.STALE_APPLICATION_DAYS,
+                )
+
+            log.info("stale_sweep.complete", flagged=len(stale))
+            return len(stale)
+    except Exception as e:
+        log.error("stale_sweep.failed", error=str(e))
+        raise
 
 
 @celery_app.task(name="app.tasks.scheduled_tasks.flag_stale_applications")
 def flag_stale_applications():
-    return asyncio.run(_flag_stale_applications_async())
+    import asyncio
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(_flag_stale_applications_async())
+    finally:
+        loop.close()
