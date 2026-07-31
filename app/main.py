@@ -8,6 +8,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.database import engine
+from app.core.redis_client import close_redis
 from app.routers import auth, jobs, applications, interviews, notes
 from app.routers import companies, recruiters, candidates, documents, health, matching
 from app.routers.auth import limiter
@@ -37,6 +38,7 @@ async def lifespan(app: FastAPI):
     yield
     log.info("ats.shutdown")
     await engine.dispose()
+    await close_redis()
 
 
 app = FastAPI(title="ATS - Applicant Tracking System", version="1.0.0", lifespan=lifespan)

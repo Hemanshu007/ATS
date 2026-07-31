@@ -20,6 +20,8 @@ services:
     command: ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     ports:
       - "8000:8000"
+    volumes:
+      - uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -44,6 +46,17 @@ services:
   worker:
     build: .
     command: ["uv", "run", "celery", "-A", "app.core.celery_app", "worker", "--loglevel=info"]
+    volumes:
+      - uploads:/app/uploads
+    # The image's HEALTHCHECK curls localhost:8000/health, which only the api
+    # service serves — worker/beat run no HTTP server, so that check always
+    # fails here. Use a celery-appropriate check instead.
+    healthcheck:
+      test: ["CMD-SHELL", "uv run celery -A app.core.celery_app inspect ping -d celery@$$HOSTNAME"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     depends_on:
       db:
         condition: service_healthy
@@ -56,6 +69,10 @@ services:
   beat:
     build: .
     command: ["uv", "run", "celery", "-A", "app.core.celery_app", "beat", "--loglevel=info"]
+    # Beat has no HTTP server and no inspectable worker process to ping;
+    # disable the inherited api-oriented HEALTHCHECK rather than report false failures.
+    healthcheck:
+      disable: true
     depends_on:
       db:
         condition: service_healthy
@@ -68,3 +85,4 @@ services:
 volumes:
   pgdata:
   redisdata:
+  uploads:

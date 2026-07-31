@@ -70,7 +70,28 @@ async def test_delete_document_active_application_blocks(client: AsyncClient, ca
         headers={"Authorization": f"Bearer {candidate_token}"},
     )
     assert resp.status_code == 409
-    assert "active application" in resp.json()["detail"].lower()
+    assert "application" in resp.json()["detail"].lower()
+
+
+async def test_delete_document_terminal_application_still_blocks(client: AsyncClient, candidate_token: str, recruiter_token: str, application_id: str):
+    """Application.document_id is a required FK with no cascade, so even a document
+    linked to a terminal-status (rejected/hired) application must stay blocked from
+    hard deletion — deleting it would violate referential integrity."""
+    await client.patch(
+        f"/applications/{application_id}/status",
+        json={"status": "rejected"},
+        headers={"Authorization": f"Bearer {recruiter_token}"},
+    )
+
+    list_resp = await client.get("/documents/me", headers={"Authorization": f"Bearer {candidate_token}"})
+    doc_id = list_resp.json()["items"][0]["id"]
+
+    resp = await client.delete(
+        f"/documents/{doc_id}",
+        headers={"Authorization": f"Bearer {candidate_token}"},
+    )
+    assert resp.status_code == 409
+    assert "application" in resp.json()["detail"].lower()
 
 
 async def test_delete_document_not_found(client: AsyncClient, candidate_token: str):

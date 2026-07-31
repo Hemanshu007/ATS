@@ -19,6 +19,6 @@ class Document(Base):
 
     parsed_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(3072), nullable=True)
-    parsed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    parsed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     candidate = relationship("Candidate", back_populates="documents")

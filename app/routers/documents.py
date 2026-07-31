@@ -2,11 +2,11 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.core.dependencies import get_current_candidate
-from app.core.constants import ACTIVE_STATUSES
 from app.models.candidate import Candidate
 from app.models.document import Document
 from app.models.application import Application
@@ -63,24 +63,34 @@ async def delete_document(
     if document.candidate_id != candidate.id:
         raise HTTPException(status_code=403, detail="Not your document")
 
-    active_app = await db.scalar(
-        select(Application)
-        .where(Application.document_id == document_id)
-        .where(Application.current_status.in_(ACTIVE_STATUSES))
+    # Application.document_id is a required FK with no cascade, so a document can
+    # never be hard-deleted while any application (including terminal ones like
+    # "hired"/"rejected") still references it — that history record needs it.
+    linked_app = await db.scalar(
+        select(Application).where(Application.document_id == document_id)
     )
-    if active_app:
+    if linked_app:
         raise HTTPException(
             status_code=409,
-            detail="Cannot delete document linked to an active application",
+            detail="Cannot delete document linked to an application",
         )
 
-    try:
+    from app.services.storage import is_s3_configured, delete_local_resume
+
+    if is_s3_configured():
         from app.services.s3 import delete_resume
         delete_resume(document.file_path)
-    except (ImportError, RuntimeError):
-        pass
+    else:
+        delete_local_resume(document.file_path)
 
     await db.delete(document)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot delete document linked to an application",
+        )
 
     return {"message": "Document deleted successfully"}

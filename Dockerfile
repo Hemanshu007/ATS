@@ -2,6 +2,9 @@ FROM python:3.11-slim
 
 RUN adduser --disabled-password --no-create-home appuser
 
+ENV HOME=/app \
+    UV_CACHE_DIR=/app/.cache/uv
+
 WORKDIR /app
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
@@ -12,8 +15,11 @@ RUN uv sync --no-dev --no-install-project
 COPY app/ app/
 COPY alembic/ alembic/
 COPY alembic.ini .
+COPY scripts/ scripts/
 
-RUN chown -R appuser:appuser /app
+# Pre-create the uploads dir so the named volume mounted here at runtime inherits
+# appuser ownership on first use (an empty bind point would default to root).
+RUN mkdir -p /app/uploads && chown -R appuser:appuser /app
 
 USER appuser
 

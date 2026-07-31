@@ -42,16 +42,16 @@ async def migrate():
         skipped = 0
 
         for doc in documents:
-            # Skip already-migrated documents (S3 keys start with "resumes/")
-            if doc.file_path.startswith("resumes/") and "/" in doc.file_path[8:]:
-                skipped += 1
-                continue
-
             local_path = LOCAL_RESUME_DIR / doc.file_path
 
+            # Local and S3 storage both use a "resumes/<uuid>/<filename>" path shape,
+            # so the only reliable idempotency check is whether a local file remains
+            # to migrate. Once migrated, the DB row points at an S3 key, but the local
+            # file itself is left in place, so this check re-uploads on re-run rather
+            # than silently skipping — safe (same key gets overwritten) but not free.
             if not local_path.exists():
-                print(f"SKIP — file not found locally: {local_path} (doc id: {doc.id})")
-                failed += 1
+                print(f"SKIP — no local file, already migrated or missing: {local_path} (doc id: {doc.id})")
+                skipped += 1
                 continue
 
             try:

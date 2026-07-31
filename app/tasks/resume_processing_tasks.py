@@ -59,7 +59,7 @@ async def _process_resume_async(document_id: str):
     default_retry_delay=60,
     autoretry_for=(Exception,),
 )
-def process_resume(document_id: str):
+def process_resume(self, document_id: str):
     import asyncio
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -93,7 +93,7 @@ async def _generate_job_embedding_async(job_id: str):
     default_retry_delay=60,
     autoretry_for=(Exception,),
 )
-def generate_job_embedding(job_id: str):
+def generate_job_embedding(self, job_id: str):
     import asyncio
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)

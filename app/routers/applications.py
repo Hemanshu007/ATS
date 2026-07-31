@@ -1,7 +1,9 @@
+import os
 import uuid
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks, Query, status
+from fastapi.responses import FileResponse
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,8 +25,10 @@ from app.models.document import Document
 from app.models.application import Application, ApplicationStatusHistory
 from app.schemas.application import ApplicationOut, StatusUpdate, StatusHistoryOut
 from app.schemas.pagination import paginate
+from app.core.config import settings
 from app.services.email import send_status_change_email
 from app.services.application_service import validate_status_transition
+from app.services.storage import is_s3_configured
 
 log = structlog.get_logger("ats.applications")
 
@@ -340,7 +344,7 @@ async def get_resume_download_url(
     if not document:
         raise HTTPException(status_code=404, detail="Resume not found")
 
-    try:
+    if is_s3_configured():
         from app.services.s3 import get_presigned_download_url
         url = get_presigned_download_url(document.file_path, expiry_seconds=3600)
         return {
@@ -349,8 +353,12 @@ async def get_resume_download_url(
             "expires_in_seconds": 3600,
             "expires_in_human": "1 hour",
         }
-    except (ImportError, RuntimeError):
-        return {
-            "filename": document.original_filename,
-            "message": "Resume storage is not available for remote download.",
-        }
+
+    full_path = os.path.join(settings.UPLOAD_DIR, document.file_path)
+    if not os.path.exists(full_path):
+        raise HTTPException(status_code=404, detail="Resume file not found on disk")
+    return FileResponse(
+        full_path,
+        filename=document.original_filename,
+        media_type="application/pdf",
+    )
